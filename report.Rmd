@@ -1,0 +1,68 @@
+---
+title: "Weight Lifting Exercises"
+output: html_document
+---
+
+##Loading the data
+The data origins from the "Weight Lifting Exercises Dataset" (see [^1]). The data contains several different errorneous entries (such as "#DIV/0!") which first have to be eliminated and replaced with proper NA values. We load both: the testing/validation as well as the training data.
+
+[^1]: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013. Read more: http://groupware.les.inf.puc-rio.br/har#wle_paper_section#ixzz3alvhU5q8
+
+
+```{r warning=FALSE, message=FALSE}
+require(caret)
+trainingData <- read.csv("pml-training.csv", sep=",", na.strings=c("","NA", "#DIV/0!"), stringsAsFactors=FALSE)
+trainingData$classe <- factor(trainingData$classe)
+validationData <- read.csv("pml-testing.csv", sep=",", na.strings=c("","NA", "#DIV/0!"), stringsAsFactors=FALSE)
+```
+
+Since the training data does not contain the actual values of the class which would allow to analyze the effectiveness of our model, we first create another "testing" sample by using 25% of the data to validate our generated model.
+
+```{r}
+require(caret)
+inTrain <- createDataPartition(y=trainingData$classe, p=0.75, list=FALSE)
+training <- trainingData[inTrain,]
+testing <- trainingData[-inTrain,]
+```
+
+
+##Selecting the variables
+When taking a look at the dataset, we can see 160 variables. Many of them are calculated and aggregated values (e.g. "max_roll_belt", "avg_roll_belt", etc) which are not that interesting for this examination. On the other hand, some data is available in a very detailed manner (e.g. "gyros_belt_x", "gyros_belt_y", etc.). Here, it's easier to use the consolidated values such as "roll_belt" or "yaw_belt". We therefore extract the columns which are interesting for us:
+
+```{r}
+relevantCols <- grep("(^roll_.*)|(^pitch_.*)|(^yaw_.*)|(^total_accel_.*)|(^classe.*)", colnames(training))
+predictors <- training[, relevantCols]
+```
+
+
+## Machine Learning
+Now that we've reduced the amount of potential variables from 170 to 17 (including "classe"), we are ready to train our model. We build two different models: A tree model and a random forest. For both of them, we define a 10-fold cross validation.
+
+###Treemodel
+```{r cache=TRUE, message=FALSE}
+treemodel <- train(classe ~ ., method = "rpart", data=predictors, trControl=trainControl("cv", 10))
+```
+```{r message=FALSE}
+print(treemodel)
+```
+The treemodel shows rather a very bad accuracy: The best model in resampling has had an accuracy of only 56%. Therefore, this model is not suited very well for further continuation.
+
+###Random Forest
+```{r cache=TRUE}
+model <- train(classe ~ ., method = "rf", data=predictors, trControl=trainControl("cv", 10))
+```
+```{r }
+print(model)
+```
+The random forest model has much better prediction values: In its resampling results, it provides an accurency of 98.9% (and therefore an expected **out of sample error of about ~1.1%**. Therefore, we give it a try and apply the model to our testing data:
+```{r message=FALSE}
+predictedValues <- predict(model, newdata=testing)
+confusionMatrix(predictedValues, testing$classe)
+```
+We can see, that our model has very good values for the out-of-sample evaluation as well: An accuracy of 0.9982 for a rather big testset (n=4904) is a very reliable result.
+
+##Prediction of the validation set
+Satisfied with the quality of our model, we now predict the provided validation data:
+```{r }
+predict(model, newdata=validationData)
+```
